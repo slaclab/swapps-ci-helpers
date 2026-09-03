@@ -1,0 +1,66 @@
+# Builds the documentation on every pull request to catch errors early, and
+# publishes it to GitHub Pages whenever changes land on main.
+
+name: Build & Deploy Documentation
+
+on:
+  workflow_call:
+    inputs:
+      docs-group:
+        description: "uv dependency group to sync for building the docs"
+        type: string
+        default: "docs"
+      docs-tool:
+        description: "Doc build tool: \"zensical\" or \"mkdocs\""
+        type: string
+        default: "zensical"
+
+jobs:
+  build:
+    permissions:
+      contents: read
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install Dependencies
+        run: uv sync --locked --group ${{ inputs.docs-group }}
+
+      - name: Build Docs (zensical)
+        if: inputs.docs-tool == 'zensical'
+        run: uv run zensical build --clean --strict
+
+      - name: Build Docs (mkdocs)
+        if: inputs.docs-tool == 'mkdocs'
+        run: uv run mkdocs build --strict --verbose
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        id: deployment

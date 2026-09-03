@@ -1,0 +1,35 @@
+name: python-test
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to run tests against"
+        type: string
+        default: "3.12"
+      os-matrix:
+        description: "JSON array string of runner OSes to test on"
+        type: string
+        default: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+      test-path:
+        description: "Path passed to pytest"
+        type: string
+        default: "tests/"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os-matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - run: uv sync --group dev
+
+      - run: uv run pytest ${{ inputs.test-path }} -v

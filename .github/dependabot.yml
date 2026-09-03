@@ -1,0 +1,14 @@
+# Dependabot: watch for new GitHub Actions releases and open PRs that
+# bump the pinned commit SHA (and the accompanying `# vX.Y.Z` comment).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
