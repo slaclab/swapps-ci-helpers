@@ -1,9 +1,9 @@
 # swapps-ci-helpers
 
-Shared, reusable GitHub Actions workflows for SWAPPS Python projects. Instead of
-copy-pasting the same test/pre-commit/docs workflow into every repo (and then
-forgetting to update them all when a pin or a step changes), consumer repos
-call into the workflows defined here.
+Shared, reusable GitHub Actions workflows for SWAPPS Python and JS/TS
+projects. Instead of copy-pasting the same test/lint/docs workflow into every
+repo (and then forgetting to update them all when a pin or a step changes),
+consumer repos call into the workflows defined here.
 
 ## Usage
 
@@ -36,7 +36,38 @@ Inputs:
 | `os-matrix` | `'["ubuntu-latest", "windows-latest", "macos-latest"]'` | JSON array string of runner OSes |
 | `test-path` | `"tests/"` | Path passed to `pytest` |
 
-### Pre-commit (`python-pre-commit.yml`)
+### JS/TS Tests (`js-test.yml`)
+
+```yaml
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: slaclab/swapps-ci-helpers/.github/workflows/js-test.yml@<SHA>
+    with:
+      node-version: "22"
+      test-command: "pnpm test"
+```
+
+Inputs:
+
+| Name | Default | Description |
+| --- | --- | --- |
+| `node-version` | `"22"` | Node.js version to run tests against |
+| `test-command` | `"pnpm test"` | Command used to run the test suite |
+
+### Pre-commit (`pre-commit.yml`)
+
+The one linting/formatting/type-checking workflow for both Python and JS/TS
+repos — `pre-commit` itself is a Python tool, but hooks declared with
+`language: node` (e.g. `eslint`, `prettier`, `tsc`) have their own runtime
+installed automatically by the `pre-commit` framework, so no separate Node
+setup step is needed here.
 
 ```yaml
 name: Pre-commit
@@ -48,11 +79,36 @@ on:
 
 jobs:
   pre-commit:
-    uses: slaclab/swapps-ci-helpers/.github/workflows/python-pre-commit.yml@<SHA>
+    uses: slaclab/swapps-ci-helpers/.github/workflows/pre-commit.yml@<SHA>
 ```
 
 No inputs. Runs `pre-commit` against the calling repo's own
-`.pre-commit-config.yaml`.
+`.pre-commit-config.yaml`. For typing/linting/formatting on a JS/TS repo,
+add hooks like these to that file:
+
+```yaml
+repos:
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.18.0
+    hooks:
+      - id: eslint
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.4.2
+    hooks:
+      - id: prettier
+  - repo: local
+    hooks:
+      - id: tsc
+        name: TypeScript type check
+        entry: pnpm exec tsc --noEmit
+        language: system
+        pass_filenames: false
+```
+
+`tsc` needs `language: system` (not a `pre-commit` mirror) since type
+checking requires the project's own `node_modules`/`tsconfig.json` — pin
+`eslint`/`prettier` mirror `rev`s the same way third-party Actions are
+pinned above: to a specific, deliberately-bumped version.
 
 ### Docs (`docs.yml`)
 
