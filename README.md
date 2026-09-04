@@ -61,13 +61,15 @@ Inputs:
 | `node-version` | `"22"` | Node.js version to run tests against |
 | `test-command` | `"pnpm test"` | Command used to run the test suite |
 
-### Pre-commit (`pre-commit.yml`)
+### Pre-commit (`python-pre-commit.yml`)
 
-The one linting/formatting/type-checking workflow for both Python and JS/TS
-repos — `pre-commit` itself is a Python tool, but hooks declared with
-`language: node` (e.g. `eslint`, `prettier`, `tsc`) have their own runtime
-installed automatically by the `pre-commit` framework, so no separate Node
-setup step is needed here.
+Python-only: runs `uvx pre-commit run --all-files` against the calling
+repo's own `.pre-commit-config.yaml` (ruff/isort/mypy, etc). JS/TS repos use
+`js-check.yml` instead (below) — pre-commit's isolated hook environments
+don't add value there, since flat `eslint.config.js` files and `tsc` both
+need to resolve against the project's own `node_modules` anyway, and
+running `language: system` hooks through pre-commit was just adding
+indirection around commands `pnpm` already runs natively.
 
 ```yaml
 name: Pre-commit
@@ -79,36 +81,41 @@ on:
 
 jobs:
   pre-commit:
-    uses: slaclab/swapps-ci-helpers/.github/workflows/pre-commit.yml@<SHA>
+    uses: slaclab/swapps-ci-helpers/.github/workflows/python-pre-commit.yml@<SHA>
 ```
 
-No inputs. Runs `pre-commit` against the calling repo's own
-`.pre-commit-config.yaml`. For typing/linting/formatting on a JS/TS repo,
-add hooks like these to that file:
+No inputs.
+
+### JS/TS Check (`js-check.yml`)
+
+Runs lint/format/type checks with pnpm, mirroring `js-test.yml`'s setup.
+For local enforcement, add [husky](https://typicode.github.io/husky/) +
+[lint-staged](https://github.com/lint-staged/lint-staged) to the repo
+instead of a `.pre-commit-config.yaml` — everything JS/TS-related then runs
+in the same pnpm environment, no extra tooling required.
 
 ```yaml
-repos:
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.18.0
-    hooks:
-      - id: eslint
-  - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.4.2
-    hooks:
-      - id: prettier
-  - repo: local
-    hooks:
-      - id: tsc
-        name: TypeScript type check
-        entry: pnpm exec tsc --noEmit
-        language: system
-        pass_filenames: false
+name: Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    uses: slaclab/swapps-ci-helpers/.github/workflows/js-check.yml@<SHA>
+    with:
+      node-version: "22"
+      check-command: "pnpm lint && pnpm format:check && pnpm exec tsc -b"
 ```
 
-`tsc` needs `language: system` (not a `pre-commit` mirror) since type
-checking requires the project's own `node_modules`/`tsconfig.json` — pin
-`eslint`/`prettier` mirror `rev`s the same way third-party Actions are
-pinned above: to a specific, deliberately-bumped version.
+Inputs:
+
+| Name | Default | Description |
+| --- | --- | --- |
+| `node-version` | `"22"` | Node.js version to run checks against |
+| `check-command` | `"pnpm lint && pnpm format:check && pnpm exec tsc -b"` | Command used to run lint/format/type checks |
 
 ### Docs (`docs.yml`)
 

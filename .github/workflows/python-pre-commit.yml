@@ -1,4 +1,4 @@
-name: pre-commit
+name: python-pre-commit
 
 on:
   workflow_call: {}
