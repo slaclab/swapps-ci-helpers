@@ -123,14 +123,23 @@ name: Build & Deploy Documentation
 
 on:
   pull_request:
-    branches: [main]
-    paths: ["mkdocs.yml", "docs/**"]
+    branches:
+      - main
+    paths:
+      - "zensical.toml"
+      - "mkdocs.yml"
+      - "docs/**"
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   docs:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: slaclab/swapps-ci-helpers/.github/workflows/docs.yml@<SHA>
     with:
       docs-group: "docs"
@@ -144,9 +153,11 @@ Inputs:
 | `docs-tool` | `"zensical"` | Doc build tool: `"zensical"` or `"mkdocs"` — set to `"mkdocs"` for repos not yet migrated |
 
 No `secrets: inherit` needed — `actions/deploy-pages` authenticates via the
-job's own `id-token: write` permission, not a token secret. The consuming
-repo's GitHub Pages source must be set to "GitHub Actions" (Settings → Pages)
-for the deploy step to work.
+job's own `id-token: write` permission, not a token secret. The calling job
+must explicitly request `pages: write`/`id-token: write` (as shown above) —
+a reusable workflow's jobs can never receive more permissions than the
+caller job grants. The consuming repo's GitHub Pages source must be set to
+"GitHub Actions" (Settings → Pages) for the deploy step to work.
 
 ## Bumping the pin
 
