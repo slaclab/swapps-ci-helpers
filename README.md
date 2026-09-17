@@ -166,6 +166,81 @@ a reusable workflow's jobs can never receive more permissions than the
 caller job grants. The consuming repo's GitHub Pages source must be set to
 "GitHub Actions" (Settings → Pages) for the deploy step to work.
 
+### Build GHCR Image and Dispatch Deployment (`build-image-and-dispatch.yml`)
+
+Builds a Docker image from the calling repo, pushes it to GHCR for the
+deployment ref, then dispatches `deploy-image` to
+`slaclab/swapps-deployment`. Pull requests still build the image, but do not
+push or dispatch. This is the recommended default for SWAPPS apps whose image
+can be built directly from a Dockerfile.
+
+```yaml
+name: Build image and deploy dev
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    permissions:
+      contents: read
+      packages: write
+    uses: slaclab/swapps-ci-helpers/.github/workflows/build-image-and-dispatch.yml@<SHA>
+    with:
+      app: canopy
+      environment: dev
+      dockerfile: docker/Dockerfile.prod
+      context: .
+      sha-tag-prefix: ""
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+Inputs:
+
+| Name | Default | Description |
+| --- | --- | --- |
+| `app` | required | App name in `slaclab/swapps-deployment` |
+| `environment` | `"dev"` | Deployment environment to update |
+| `deployment-repo` | `"swapps-deployment"` | Repository that receives the `deploy-image` dispatch |
+| `deploy-ref` | `"refs/heads/main"` | Git ref allowed to push the image and dispatch deployment |
+| `image-name` | calling repo | GHCR image name without registry, for example `slaclab/canopy` |
+| `dockerfile` | `"Dockerfile"` | Dockerfile path |
+| `context` | `"."` | Docker build context |
+| `platforms` | `"linux/amd64"` | Platform list passed to Buildx |
+| `setup-qemu` | `false` | Install QEMU before Buildx, usually for multi-arch builds |
+| `sha-tag-prefix` | `"sha-"` | Prefix for the deployable SHA tag; use `""` for bare short-SHA tags or `"main-"` for `main-<sha>` |
+| `latest-tag` | `true` | Also publish `latest` on the deployment ref |
+| `extra-tags` | `""` | Additional `docker/metadata-action` tag rules |
+| `labels` | `""` | Additional `docker/metadata-action` labels |
+| `build-args` | `""` | Newline-separated Docker build args |
+| `target` | `""` | Optional Docker build target |
+| `provenance` | `""` | Provenance setting passed to `docker/build-push-action` |
+| `cache-from` | `"type=gha"` | Docker build cache source |
+| `cache-to` | `"type=gha,mode=max"` | Docker build cache destination |
+
+Secrets:
+
+| Name | Description |
+| --- | --- |
+| `APP_ID` | GitHub App ID with access to `swapps-deployment` |
+| `APP_PRIVATE_KEY` | GitHub App private key with access to `swapps-deployment` |
+
+The deployable image is always the GHCR image plus the SHA tag generated from
+`sha-tag-prefix`, for example `ghcr.io/slaclab/react-squirrel:main-abcdef0`.
+If a repo needs custom build/test/package jobs before creating the image, keep
+those jobs in the app repo for now. A planned follow-up is to split this into
+two smaller reusable workflows:
+
+1. `build-ghcr-image.yml` for Docker metadata, Buildx, cache, and GHCR push.
+2. `dispatch-swapps-deployment.yml` for the GitHub App token and
+   `repository_dispatch`.
+
 ## Bumping the pin
 
 When this repo changes, consumers keep running the old, working version of
