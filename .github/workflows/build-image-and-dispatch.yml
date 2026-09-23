@@ -4,13 +4,17 @@ on:
   workflow_call:
     inputs:
       app:
-        description: "App name in slaclab/swapps-deployment"
+        description: "App name in the deployment repository"
         type: string
         required: true
       environment:
         description: "Deployment environment to update"
         type: string
         default: "dev"
+      deployment-owner:
+        description: "Owner of the repository that receives the deploy-image repository_dispatch"
+        type: string
+        default: "slaclab"
       deployment-repo:
         description: "Repository that receives the deploy-image repository_dispatch"
         type: string
@@ -44,7 +48,7 @@ on:
         type: string
         default: "sha-"
       latest-tag:
-        description: "Also tag default-branch builds as latest"
+        description: "Also publish latest when the deployment ref is pushed"
         type: boolean
         default: true
       extra-tags:
@@ -166,7 +170,7 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
+          owner: ${{ inputs.deployment-owner }}
           repositories: ${{ inputs.deployment-repo }}
 
       - name: Dispatch deploy
@@ -175,11 +179,12 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP: ${{ inputs.app }}
           ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOYMENT_OWNER: ${{ inputs.deployment-owner }}
           DEPLOYMENT_REPO: ${{ inputs.deployment-repo }}
           IMAGE: ${{ steps.image.outputs.deploy_image }}
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY_OWNER}/${DEPLOYMENT_REPO}/dispatches" \
+          gh api "repos/${DEPLOYMENT_OWNER}/${DEPLOYMENT_REPO}/dispatches" \
             -f event_type=deploy-image \
             -f "client_payload[app]=${APP}" \
             -f "client_payload[environment]=${ENVIRONMENT}" \
