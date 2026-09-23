@@ -82,10 +82,10 @@ on:
     secrets:
       APP_ID:
         description: "GitHub App ID with access to the deployment repository"
-        required: true
+        required: false
       APP_PRIVATE_KEY:
         description: "GitHub App private key with access to the deployment repository"
-        required: true
+        required: false
     outputs:
       image:
         description: "Full image reference dispatched to the deployment repository"
@@ -163,6 +163,16 @@ jobs:
           provenance: ${{ inputs.provenance }}
           cache-from: ${{ inputs.cache-from }}
           cache-to: ${{ inputs.cache-to }}
+
+      - name: Validate deployment secrets
+        if: github.ref == inputs.deploy-ref && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_ID" || { echo "::error::APP_ID is required to dispatch deployments"; exit 1; }
+          test -n "$APP_PRIVATE_KEY" || { echo "::error::APP_PRIVATE_KEY is required to dispatch deployments"; exit 1; }
 
       - name: Mint deployment repo token
         if: github.ref == inputs.deploy-ref && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

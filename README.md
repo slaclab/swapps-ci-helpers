@@ -231,11 +231,13 @@ Secrets:
 
 | Name | Description |
 | --- | --- |
-| `APP_ID` | GitHub App ID with access to the deployment repository |
-| `APP_PRIVATE_KEY` | GitHub App private key with access to the deployment repository |
+| `APP_ID` | GitHub App ID with access to the deployment repository; required when a push or `workflow_dispatch` on `deploy-ref` should dispatch deployment |
+| `APP_PRIVATE_KEY` | GitHub App private key with access to the deployment repository; required when a push or `workflow_dispatch` on `deploy-ref` should dispatch deployment |
 
 The deployable image is always the GHCR image plus the SHA tag generated from
 `sha-tag-prefix`, for example `ghcr.io/slaclab/react-squirrel:main-abcdef0`.
+Fork pull requests can omit these deployment secrets and will still run the
+image build, but publish/dispatch steps remain disabled.
 If a repo needs custom build/test/package jobs before creating the image, keep
 those jobs in the app repo for now. A planned follow-up is to split this into
 two smaller reusable workflows:
