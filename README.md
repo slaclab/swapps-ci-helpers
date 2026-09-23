@@ -170,9 +170,11 @@ caller job grants. The consuming repo's GitHub Pages source must be set to
 
 Builds a Docker image from the calling repo, pushes it to GHCR for the
 deployment ref, then dispatches `deploy-image` to
-`slaclab/swapps-deployment`. Pull requests still build the image, but do not
-push or dispatch. This is the recommended default for SWAPPS apps whose image
-can be built directly from a Dockerfile.
+`slaclab/swapps-deployment`. Only `push` and `workflow_dispatch` events on
+the configured deployment ref can push or dispatch; pull-request events,
+including `pull_request_target`, still build the image but cannot publish or
+deploy. This is the recommended default for SWAPPS apps whose image can be
+built directly from a Dockerfile.
 
 ```yaml
 name: Build image and deploy dev
