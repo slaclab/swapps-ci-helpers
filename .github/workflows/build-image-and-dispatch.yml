@@ -115,6 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           image_name="${INPUT_IMAGE_NAME:-$GITHUB_REPOSITORY}"
+          image_name=$(printf '%s' "$image_name" | tr '[:upper:]' '[:lower:]')
           image="ghcr.io/${image_name}"
           deploy_image="${image}:${SHA_TAG_PREFIX}${GITHUB_SHA::7}"
           {

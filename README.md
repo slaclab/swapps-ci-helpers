@@ -212,7 +212,7 @@ Inputs:
 | `deployment-owner` | `"slaclab"` | Owner of the repository that receives the `deploy-image` dispatch |
 | `deployment-repo` | `"swapps-deployment"` | Repository that receives the `deploy-image` dispatch |
 | `deploy-ref` | `"refs/heads/main"` | Git ref allowed to push the image and dispatch deployment |
-| `image-name` | calling repo | GHCR image name without registry, for example `slaclab/canopy` |
+| `image-name` | calling repo | GHCR image name without registry, normalized to lowercase, for example `slaclab/canopy` |
 | `dockerfile` | `"Dockerfile"` | Dockerfile path |
 | `context` | `"."` | Docker build context |
 | `platforms` | `"linux/amd64"` | Platform list passed to Buildx |
