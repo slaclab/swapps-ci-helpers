@@ -171,8 +171,9 @@ caller job grants. The consuming repo's GitHub Pages source must be set to
 Builds a Docker image from the calling repo, pushes it to GHCR for the
 deployment ref, then dispatches `deploy-image` to
 `slaclab/swapps-deployment`. Pull requests still build the image, but do not
-push or dispatch. This is the recommended default for SWAPPS apps whose image
-can be built directly from a Dockerfile.
+push or dispatch, including `pull_request_target` runs. This is the
+recommended default for SWAPPS apps whose image can be built directly from a
+Dockerfile.
 
 ```yaml
 name: Build image and deploy dev
@@ -207,6 +208,7 @@ Inputs:
 | --- | --- | --- |
 | `app` | required | App name in `slaclab/swapps-deployment` |
 | `environment` | `"dev"` | Deployment environment to update |
+| `deployment-owner` | calling repository owner | Owner of the repository that receives deployment dispatches |
 | `deployment-repo` | `"swapps-deployment"` | Repository that receives the `deploy-image` dispatch |
 | `deploy-ref` | `"refs/heads/main"` | Git ref allowed to push the image and dispatch deployment |
 | `image-name` | calling repo | GHCR image name without registry, for example `slaclab/canopy` |
@@ -233,13 +235,65 @@ Secrets:
 
 The deployable image is always the GHCR image plus the SHA tag generated from
 `sha-tag-prefix`, for example `ghcr.io/slaclab/react-squirrel:main-abcdef0`.
-If a repo needs custom build/test/package jobs before creating the image, keep
-those jobs in the app repo for now. A planned follow-up is to split this into
-two smaller reusable workflows:
+The workflow output `image` contains that immutable full image reference.
+Deploy-capable runs verify the deployment credentials before publishing.
 
-1. `build-ghcr-image.yml` for Docker metadata, Buildx, cache, and GHCR push.
-2. `dispatch-swapps-deployment.yml` for the GitHub App token and
-   `repository_dispatch`.
+### Build GHCR Image (`build-ghcr-image.yml`)
+
+Use this workflow when an application can build directly from a Dockerfile but
+dispatches deployment separately. It validates every build. Only `push` or
+`workflow_dispatch` runs on `deploy-ref` authenticate to GHCR and publish.
+The `image` output is the normalized-lowercase GHCR name with its immutable
+SHA tag.
+
+```yaml
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: slaclab/swapps-ci-helpers/.github/workflows/build-ghcr-image.yml@<SHA>
+    with:
+      image-name: slaclab/canopy
+      dockerfile: docker/Dockerfile.prod
+      sha-tag-prefix: ""
+```
+
+It accepts the image-related inputs listed for
+`build-image-and-dispatch.yml`: `deploy-ref`, `image-name`, `dockerfile`,
+`context`, `platforms`, `setup-qemu`, `sha-tag-prefix`, `latest-tag`,
+`extra-tags`, `labels`, `build-args`, `target`, `provenance`, `cache-from`,
+and `cache-to`.
+
+### Dispatch SWAPPS Deployment (`dispatch-swapps-deployment.yml`)
+
+Use this workflow after custom test, package, and image-publishing jobs. It
+only mints the GitHub App token and sends `deploy-image` for a `push` or
+`workflow_dispatch` run on `deploy-ref`; pull request events never access the
+App credentials. The `image` input must be an immutable full image reference;
+the same value is returned as the `image` output after dispatch.
+
+```yaml
+jobs:
+  dispatch:
+    needs: publish-image
+    uses: slaclab/swapps-ci-helpers/.github/workflows/dispatch-swapps-deployment.yml@<SHA>
+    with:
+      app: canopy
+      environment: dev
+      image: ${{ needs.publish-image.outputs.image }}
+      deployment-owner: slaclab
+      deployment-repo: swapps-deployment
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+Inputs are `app` (required), `environment` (`"dev"`), `image` (required),
+`deployment-owner` (calling repository owner), `deployment-repo`
+(`"swapps-deployment"`), and `deploy-ref` (`"refs/heads/main"`). The
+workflow sends `app`, `environment`, and `image` in the receiver's expected
+`deploy-image` payload.
 
 ## Bumping the pin
 

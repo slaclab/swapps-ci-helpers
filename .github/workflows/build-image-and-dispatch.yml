@@ -11,6 +11,10 @@ on:
         description: "Deployment environment to update"
         type: string
         default: "dev"
+      deployment-owner:
+        description: "Owner of the repository that receives the deploy-image repository_dispatch"
+        type: string
+        default: ""
       deployment-repo:
         description: "Repository that receives the deploy-image repository_dispatch"
         type: string
@@ -44,7 +48,7 @@ on:
         type: string
         default: "sha-"
       latest-tag:
-        description: "Also tag default-branch builds as latest"
+        description: "Also tag deployment-ref builds as latest"
         type: boolean
         default: true
       extra-tags:
@@ -84,101 +88,58 @@ on:
         required: true
     outputs:
       image:
-        description: "Full image reference dispatched to the deployment repository"
-        value: ${{ jobs.build_and_dispatch.outputs.image }}
+        description: "Full immutable image reference dispatched to the deployment repository"
+        value: ${{ jobs.build.outputs.image }}
 
 jobs:
-  build_and_dispatch:
-    permissions:
-      contents: read
-      packages: write
-
+  validate-deployment-credentials:
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == inputs.deploy-ref
+    permissions: {}
     runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.image.outputs.deploy_image }}
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set image reference
-        id: image
+      - name: Validate deployment credentials
         env:
-          INPUT_IMAGE_NAME: ${{ inputs.image-name }}
-          SHA_TAG_PREFIX: ${{ inputs.sha-tag-prefix }}
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          image_name="${INPUT_IMAGE_NAME:-$GITHUB_REPOSITORY}"
-          image="ghcr.io/${image_name}"
-          deploy_image="${image}:${SHA_TAG_PREFIX}${GITHUB_SHA::7}"
-          {
-            echo "image=${image}"
-            echo "deploy_image=${deploy_image}"
-          } >> "$GITHUB_OUTPUT"
+          test -n "$APP_ID" || { echo "APP_ID is required"; exit 1; }
+          test -n "$APP_PRIVATE_KEY" || { echo "APP_PRIVATE_KEY is required"; exit 1; }
 
-      - name: Set up QEMU
-        if: inputs.setup-qemu
-        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+  build:
+    needs: validate-deployment-credentials
+    if: always() && (needs.validate-deployment-credentials.result == 'success' || needs.validate-deployment-credentials.result == 'skipped')
+    uses: ./.github/workflows/build-ghcr-image.yml
+    with:
+      deploy-ref: ${{ inputs.deploy-ref }}
+      image-name: ${{ inputs.image-name }}
+      dockerfile: ${{ inputs.dockerfile }}
+      context: ${{ inputs.context }}
+      platforms: ${{ inputs.platforms }}
+      setup-qemu: ${{ inputs.setup-qemu }}
+      sha-tag-prefix: ${{ inputs.sha-tag-prefix }}
+      latest-tag: ${{ inputs.latest-tag }}
+      extra-tags: ${{ inputs.extra-tags }}
+      labels: ${{ inputs.labels }}
+      build-args: ${{ inputs.build-args }}
+      target: ${{ inputs.target }}
+      provenance: ${{ inputs.provenance }}
+      cache-from: ${{ inputs.cache-from }}
+      cache-to: ${{ inputs.cache-to }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request' && github.ref == inputs.deploy-ref
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ steps.image.outputs.image }}
-          tags: |
-            type=sha,prefix=${{ inputs.sha-tag-prefix }}
-            type=raw,value=latest,enable=${{ inputs.latest-tag }}
-            ${{ inputs.extra-tags }}
-          labels: ${{ inputs.labels }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' && github.ref == inputs.deploy-ref }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: ${{ inputs.platforms }}
-          build-args: ${{ inputs.build-args }}
-          target: ${{ inputs.target }}
-          provenance: ${{ inputs.provenance }}
-          cache-from: ${{ inputs.cache-from }}
-          cache-to: ${{ inputs.cache-to }}
-
-      - name: Mint deployment repo token
-        if: github.event_name != 'pull_request' && github.ref == inputs.deploy-ref
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ inputs.deployment-repo }}
-
-      - name: Dispatch deploy
-        if: github.event_name != 'pull_request' && github.ref == inputs.deploy-ref
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP: ${{ inputs.app }}
-          ENVIRONMENT: ${{ inputs.environment }}
-          DEPLOYMENT_REPO: ${{ inputs.deployment-repo }}
-          IMAGE: ${{ steps.image.outputs.deploy_image }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY_OWNER}/${DEPLOYMENT_REPO}/dispatches" \
-            -f event_type=deploy-image \
-            -f "client_payload[app]=${APP}" \
-            -f "client_payload[environment]=${ENVIRONMENT}" \
-            -f "client_payload[image]=${IMAGE}"
+  dispatch:
+    needs:
+      - validate-deployment-credentials
+      - build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == inputs.deploy-ref
+    uses: ./.github/workflows/dispatch-swapps-deployment.yml
+    with:
+      app: ${{ inputs.app }}
+      environment: ${{ inputs.environment }}
+      image: ${{ needs.build.outputs.image }}
+      deployment-owner: ${{ inputs.deployment-owner }}
+      deployment-repo: ${{ inputs.deployment-repo }}
+      deploy-ref: ${{ inputs.deploy-ref }}
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
