@@ -79,6 +79,10 @@ on:
         description: "Docker build cache destination"
         type: string
         default: "type=gha,mode=max"
+      npm-github-packages:
+        description: "Expose GITHUB_TOKEN to the build as BuildKit secret 'npmrc' (npm auth for npm.pkg.github.com)"
+        type: boolean
+        default: false
     secrets:
       APP_ID:
         description: "GitHub App ID with access to the deployment repository"
@@ -126,6 +130,7 @@ jobs:
       provenance: ${{ inputs.provenance }}
       cache-from: ${{ inputs.cache-from }}
       cache-to: ${{ inputs.cache-to }}
+      npm-github-packages: ${{ inputs.npm-github-packages }}
 
   dispatch:
     needs:

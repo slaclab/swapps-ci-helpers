@@ -63,6 +63,10 @@ on:
         description: "Docker build cache destination"
         type: string
         default: "type=gha,mode=max"
+      npm-github-packages:
+        description: "Expose GITHUB_TOKEN to the build as BuildKit secret 'npmrc' (npm auth for npm.pkg.github.com)"
+        type: boolean
+        default: false
     outputs:
       image:
         description: "Immutable full GHCR image reference for this commit"
@@ -90,10 +94,20 @@ jobs:
 
   validate-build:
     needs: prepare
+    # packages: read lets npm-github-packages builds read GitHub Packages. The
+    # caller's job must grant at least packages: read; callers already grant
+    # packages: write for publish.
     permissions:
       contents: read
+      packages: read
     runs-on: ubuntu-latest
     steps:
+      - name: Refuse npm-github-packages on pull_request_target
+        if: inputs.npm-github-packages && github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::npm-github-packages is not supported on pull_request_target: this job builds the pull request head, which must not receive the GITHUB_TOKEN"
+          exit 1
+
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -120,6 +134,7 @@ jobs:
           provenance: ${{ inputs.provenance }}
           cache-from: ${{ inputs.cache-from }}
           cache-to: ${{ inputs.cache-to }}
+          secrets: ${{ inputs.npm-github-packages && format('npmrc=//npm.pkg.github.com/:_authToken={0}', secrets.GITHUB_TOKEN) || '' }}
 
   publish:
     needs: prepare
@@ -174,3 +189,4 @@ jobs:
           provenance: ${{ inputs.provenance }}
           cache-from: ${{ inputs.cache-from }}
           cache-to: ${{ inputs.cache-to }}
+          secrets: ${{ inputs.npm-github-packages && format('npmrc=//npm.pkg.github.com/:_authToken={0}', secrets.GITHUB_TOKEN) || '' }}
