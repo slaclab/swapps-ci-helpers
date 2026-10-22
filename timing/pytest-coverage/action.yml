@@ -9,7 +9,9 @@ inputs:
     description: uv dependency group to sync
     default: dev
   pytest-args:
-    description: Extra arguments passed to pytest
+    description: >-
+      Extra pytest arguments, one per line. Lines are passed as-is, with no
+      shell quoting, so `-k` and `not slow` go on separate lines.
     default: ""
   artifact-suffix:
     description: >-
@@ -43,7 +45,11 @@ runs:
         PYTEST_ARGS: ${{ inputs.pytest-args }}
         STEP_SUMMARY: ${{ inputs.step-summary }}
       run: |
-        read -r -a args <<< "$PYTEST_ARGS"
+        args=()
+        while IFS= read -r arg; do
+          arg="${arg%$'\r'}"
+          if [ -n "$arg" ]; then args+=("$arg"); fi
+        done <<< "$PYTEST_ARGS"
         if [ "$STEP_SUMMARY" = "true" ]; then
           printf '## Test results\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
           status=0
