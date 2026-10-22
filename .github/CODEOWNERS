@@ -1,2 +1,5 @@
 # Request review on all changes
 * @slaclab/swapps
+
+# Timing composite actions: incubating, owned jointly until promoted
+/timing/ @slaclab/swapps @slaclab/eed-timing
