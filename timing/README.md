@@ -18,6 +18,9 @@ Every action except `coverage-comment` uses only `bash`/`pwsh` steps or
 pinned JavaScript actions, so they run on Linux, macOS, and Windows, and in
 container jobs such as `rockylinux:9`. `coverage-comment` wraps a Docker
 action and needs a Linux runner with Docker, such as `ubuntu-latest`.
+`resolve-release-latest` and `create-release` query the latest release with
+the GitHub CLI, so container jobs must have `gh` on `PATH` (GitHub-hosted
+runners already do).
 
 Inputs that take arguments (`pytest-args`, `spec-args`, `smoke-test-args`)
 take one argument per line. Each line is passed as-is, with no shell quoting
@@ -51,7 +54,7 @@ can fetch internal timing dependencies. Replaces the `gh auth setup-git`,
 Decides whether a tag should be marked as the "latest" GitHub release: only
 stable tags (matching `tag-pattern`) that are at least as high as the current
 latest release qualify. Fails rather than guessing if the current latest
-release can't be queried.
+release can't be queried. Needs `gh` on `PATH` unless `current-latest` is set.
 
 | Input | Default | Description |
 | --- | --- | --- |
@@ -67,8 +70,8 @@ Outputs: `make_latest`, and `prerelease` (`true` when the tag doesn't match
 ## `create-release`
 
 Creates the GitHub Release, using the same logic as `resolve-release-latest`
-to set `make_latest`. The caller job needs `permissions: contents: write`; no
-checkout is required unless `files` come from the workspace.
+to set `make_latest`. The caller job needs `permissions: contents: write` and
+`gh` on `PATH`; no checkout is required unless `files` come from the workspace.
 
 ```yaml
 release:

@@ -10,11 +10,16 @@ trap 'rm -rf "$tmp"' EXIT
 failures=0
 pattern='^R[0-9]+\.[0-9]+\.[0-9]+$'
 
-# Fake gh: prints $FAKE_GH_LATEST, or fails when FAKE_GH_FAIL=1.
+# Fake gh: prints $FAKE_GH_LATEST, or fails when FAKE_GH_FAIL=1. It also
+# rejects -F, which would send a repo name like "123" as a number instead of
+# the String! the query declares.
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 [ "${FAKE_GH_FAIL:-0}" = "1" ] && exit 1
+for arg in "$@"; do
+  if [ "$arg" = "-F" ]; then echo "fake gh: use -f for string variables" >&2; exit 2; fi
+done
 printf '%s\n' "${FAKE_GH_LATEST:-}"
 EOF
 chmod +x "$tmp/bin/gh"
