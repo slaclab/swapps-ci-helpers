@@ -105,7 +105,7 @@ runs:
           $exe = (Resolve-Path -LiteralPath $path.Trim()).Path
           $p = Start-Process -FilePath $exe -ArgumentList $env:SMOKE_ARGS -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 0) {
-            Write-Error "$path smoke test failed with exit code $($p.ExitCode)"
+            Write-Host "::error::$path smoke test failed with exit code $($p.ExitCode)"
             exit $p.ExitCode
           }
         }
