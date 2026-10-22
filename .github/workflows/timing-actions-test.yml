@@ -137,6 +137,15 @@ jobs:
         if: ${{ steps.failing.outcome != 'failure' }}
         shell: bash
         run: exit 1
+      # "not forced" must reach pytest as one argument to deselect the failure.
+      - uses: ./helpers/timing/pytest-coverage
+        env:
+          FIXTURE_FAIL: "1"
+        with:
+          artifact-suffix: ${{ runner.os }}-args
+          pytest-args: |
+            -k
+            not forced
 
   coverage-artifacts:
     needs: pytest-coverage
@@ -152,6 +161,7 @@ jobs:
           for os in Linux macOS Windows; do
             test -s ".coverage.$os"
             test -s ".coverage.$os-failing"
+            test -s ".coverage.$os-args"
           done
 
   pyinstaller-build:
@@ -194,6 +204,18 @@ jobs:
           executables: fixture_gui
           smoke-test-args: --fail
           artifact-name: fixture-${{ runner.os }}-failing
+      # Covers argument quoting, including Start-Process on Windows.
+      - uses: ./helpers/timing/pyinstaller-build
+        with:
+          spec: fixture.spec
+          dependency-group: build
+          executables: |
+            fixture_cli
+            fixture_gui
+          smoke-test-args: |
+            --expect
+            say "hi" now
+          artifact-name: fixture-${{ runner.os }}-args
       - name: Check a failing smoke test fails the step
         if: ${{ steps.failing.outcome != 'failure' }}
         shell: bash
@@ -204,7 +226,9 @@ jobs:
         uses: ./helpers/timing/pyinstaller-build
         with:
           spec: fixture.spec
-          spec-args: -- --console-only
+          spec-args: |
+            --
+            --console-only
           dependency-group: build
           executables: fixture_cli
           artifact-name: fixture-${{ runner.os }}-console-only

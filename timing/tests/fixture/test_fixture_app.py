@@ -9,6 +9,11 @@ def test_import_check():
     assert main(["--import-check"]) == 0
 
 
+def test_expect_flag():
+    assert main(["--expect", 'say "hi" now']) == 0
+    assert main(["--expect", "say"]) == 4
+
+
 def test_fail_flag():
     assert main(["--fail"]) == 3
 
