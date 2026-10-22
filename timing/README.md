@@ -14,8 +14,20 @@ Pin every reference to a commit SHA, for example:
 - uses: slaclab/swapps-ci-helpers/timing/setup-private-git@<SHA>
 ```
 
-Every action uses only `bash`/`pwsh` steps or pinned JavaScript actions, so
-they also run in container jobs such as `rockylinux:9`.
+Every action except `coverage-comment` uses only `bash`/`pwsh` steps or
+pinned JavaScript actions, so they run on Linux, macOS, and Windows, and in
+container jobs such as `rockylinux:9`. `coverage-comment` wraps a Docker
+action and needs a Linux runner with Docker, such as `ubuntu-latest`.
+
+Inputs that take arguments (`pytest-args`, `spec-args`, `smoke-test-args`)
+take one argument per line. Each line is passed as-is, with no shell quoting
+or expansion, so an argument may contain spaces:
+
+```yaml
+pytest-args: |
+  -k
+  not slow
+```
 
 ## `setup-private-git`
 
@@ -90,7 +102,13 @@ Outputs: `url`, `make_latest`.
 
 Runs `uv sync`, then `pytest` under `coverage`, and uploads the data as a
 `coverage-<suffix>` artifact. Requires checkout and `astral-sh/setup-uv` (or
-another uv install) first.
+another uv install) first. For `coverage-comment` to find the sources, the
+project must record relative paths:
+
+```toml
+[tool.coverage.run]
+relative_files = true
+```
 
 ```yaml
 - uses: slaclab/swapps-ci-helpers/timing/pytest-coverage@<SHA>
@@ -101,15 +119,16 @@ another uv install) first.
 | Input | Default | Description |
 | --- | --- | --- |
 | `dependency-group` | `dev` | uv dependency group to sync |
-| `pytest-args` | `""` | Extra pytest arguments |
+| `pytest-args` | `""` | Extra pytest arguments, one per line |
 | `artifact-suffix` | runner OS | Unique per matrix entry |
 | `step-summary` | `false` | Also write pytest output to the job summary |
 
 ## `coverage-comment`
 
 Merges every `coverage-*` artifact and reports it with
-`python-coverage-comment-action`. Run it in a job that `needs` the test jobs,
-after a checkout, with `pull-requests: write` and `contents: write`.
+`python-coverage-comment-action`. Run it on a Linux runner with Docker, in a
+job that `needs` the test jobs, after a checkout, with `pull-requests: write`
+and `contents: write`.
 
 ```yaml
 coverage:
@@ -135,6 +154,9 @@ Runs `uv sync`, builds a PyInstaller spec, smoke tests each executable
 exit code), and uploads all executables as one artifact. Requires checkout,
 uv, and any system packages first.
 
+Artifacts don't keep file permissions, so run `chmod +x` on downloaded Linux
+and macOS executables before running or archiving them.
+
 ```yaml
 - uses: slaclab/swapps-ci-helpers/timing/pyinstaller-build@<SHA>
   with:
@@ -148,11 +170,11 @@ uv, and any system packages first.
 | Input | Default | Description |
 | --- | --- | --- |
 | `spec` | required | PyInstaller `.spec` path |
-| `spec-args` | `""` | Extra pyinstaller arguments, e.g. `-- --guis pattern_selection` |
+| `spec-args` | `""` | Extra pyinstaller arguments, one per line, e.g. `--`, `--guis`, `pattern_selection` |
 | `executables` | required | Newline-separated names produced in `dist/` (`.exe` added on Windows) |
 | `artifact-name` | required | Name of the uploaded artifact |
 | `dependency-group` | `dev` | uv group to sync; must include pyinstaller |
-| `smoke-test-args` | `--import-check` | Arguments for the smoke test; empty to skip |
+| `smoke-test-args` | `--import-check` | Smoke test arguments, one per line; empty to skip |
 | `qt-offscreen` | `true` | Set `QT_QPA_PLATFORM=offscreen` |
 
 Output: `paths`, the built executable paths.
