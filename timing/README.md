@@ -189,3 +189,18 @@ Run the `resolve.sh` unit tests locally:
 ```bash
 bash timing/resolve-release-latest/test_resolve.sh
 ```
+
+Shellcheck `resolve.sh` and every inline bash step (this also rejects
+`${{ }}` expressions inside `run:`; pass inputs through `env:` instead):
+
+```bash
+uv run timing/tests/lint_actions.py
+```
+
+[`timing-actions-test.yml`](../.github/workflows/timing-actions-test.yml)
+runs these checks plus actionlint and zizmor on every change under `timing/`.
+It also runs each action, except the two with side effects, on Linux, macOS,
+and Windows (and Rocky Linux 9 for `setup-private-git`). The runs use the
+fixture project in [`tests/fixture`](tests/fixture), including cases that
+must fail. `create-release` and `coverage-comment` would publish releases and
+comments, so they are covered by the `resolve.sh` tests and linting only.
