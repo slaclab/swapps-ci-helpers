@@ -37,8 +37,8 @@ if [ -z "$CURRENT_LATEST" ]; then
   # shellcheck disable=SC2016
   if ! CURRENT_LATEST=$(gh api graphql \
     -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } } }' \
-    -F owner="${GITHUB_REPOSITORY%/*}" \
-    -F name="${GITHUB_REPOSITORY#*/}" \
+    -f owner="${GITHUB_REPOSITORY%/*}" \
+    -f name="${GITHUB_REPOSITORY#*/}" \
     --jq '.data.repository.latestRelease.tagName // ""'); then
     echo "Unable to determine the current latest release; refusing to guess." >&2
     exit 1
