@@ -9,7 +9,9 @@ inputs:
     description: Path to the PyInstaller .spec file
     required: true
   spec-args:
-    description: Extra arguments for pyinstaller, e.g. "-- --guis pattern_selection"
+    description: >-
+      Extra pyinstaller arguments, one per line and passed as-is (no shell
+      quoting), e.g. "--", "--guis", "pattern_selection" on separate lines.
     default: ""
   executables:
     description: Newline-separated executable names the spec produces in dist/
@@ -21,7 +23,9 @@ inputs:
     description: uv dependency group to sync (must include pyinstaller)
     default: dev
   smoke-test-args:
-    description: Arguments each executable is run with as a smoke test; empty to skip
+    description: >-
+      Smoke test arguments, one per line and passed as-is (no shell quoting);
+      empty to skip the smoke test.
     default: --import-check
   qt-offscreen:
     description: Set QT_QPA_PLATFORM=offscreen for the build and smoke test
@@ -47,7 +51,11 @@ runs:
         QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
       run: |
         if [ "$QT_OFFSCREEN" = "true" ]; then export QT_QPA_PLATFORM=offscreen; fi
-        read -r -a args <<< "$SPEC_ARGS"
+        args=()
+        while IFS= read -r arg; do
+          arg="${arg%$'\r'}"
+          if [ -n "$arg" ]; then args+=("$arg"); fi
+        done <<< "$SPEC_ARGS"
         uv run pyinstaller --noconfirm "$SPEC" "${args[@]}"
 
     - id: paths
@@ -82,7 +90,11 @@ runs:
         QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
       run: |
         if [ "$QT_OFFSCREEN" = "true" ]; then export QT_QPA_PLATFORM=offscreen; fi
-        read -r -a args <<< "$SMOKE_ARGS"
+        args=()
+        while IFS= read -r arg; do
+          arg="${arg%$'\r'}"
+          if [ -n "$arg" ]; then args+=("$arg"); fi
+        done <<< "$SMOKE_ARGS"
         while IFS= read -r path; do
           [ -n "$path" ] || continue
           echo "Smoke testing $path"
@@ -100,10 +112,20 @@ runs:
         QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
       run: |
         if ($env:QT_OFFSCREEN -eq 'true') { $env:QT_QPA_PLATFORM = 'offscreen' }
+        # Start-Process joins arguments without quoting, so quote each line
+        # using the Windows command-line rules.
+        $quoted = foreach ($arg in ($env:SMOKE_ARGS -split "`n")) {
+          $arg = $arg.TrimEnd("`r")
+          if ($arg -eq '') { continue }
+          if ($arg -notmatch '[\s"]') { $arg; continue }
+          '"' + (($arg -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
+        }
+        $extra = @{}
+        if ($quoted) { $extra.ArgumentList = $quoted -join ' ' }
         foreach ($path in ($env:PATHS -split "`n" | Where-Object { $_.Trim() })) {
           Write-Host "Smoke testing $path"
           $exe = (Resolve-Path -LiteralPath $path.Trim()).Path
-          $p = Start-Process -FilePath $exe -ArgumentList $env:SMOKE_ARGS -Wait -PassThru -NoNewWindow
+          $p = Start-Process -FilePath $exe @extra -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 0) {
             Write-Host "::error::$path smoke test failed with exit code $($p.ExitCode)"
             exit $p.ExitCode
