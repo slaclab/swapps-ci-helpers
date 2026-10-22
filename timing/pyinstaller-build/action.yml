@@ -1,0 +1,117 @@
+name: PyInstaller build
+description: >-
+  Sync a uv project, build executables from a PyInstaller spec, smoke test
+  each one, and upload them together as a single artifact. Requires checkout,
+  uv, and any system packages to be set up first.
+
+inputs:
+  spec:
+    description: Path to the PyInstaller .spec file
+    required: true
+  spec-args:
+    description: Extra arguments for pyinstaller, e.g. "-- --guis pattern_selection"
+    default: ""
+  executables:
+    description: Newline-separated executable names the spec produces in dist/
+    required: true
+  artifact-name:
+    description: Name of the uploaded artifact containing every executable
+    required: true
+  dependency-group:
+    description: uv dependency group to sync (must include pyinstaller)
+    default: dev
+  smoke-test-args:
+    description: Arguments each executable is run with as a smoke test; empty to skip
+    default: --import-check
+  qt-offscreen:
+    description: Set QT_QPA_PLATFORM=offscreen for the build and smoke test
+    default: "true"
+
+outputs:
+  paths:
+    description: Newline-separated paths of the built executables
+    value: ${{ steps.paths.outputs.paths }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GROUP: ${{ inputs.dependency-group }}
+      run: uv sync --group "$GROUP"
+
+    - shell: bash
+      env:
+        SPEC: ${{ inputs.spec }}
+        SPEC_ARGS: ${{ inputs.spec-args }}
+        QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
+      run: |
+        if [ "$QT_OFFSCREEN" = "true" ]; then export QT_QPA_PLATFORM=offscreen; fi
+        read -r -a args <<< "$SPEC_ARGS"
+        uv run pyinstaller --noconfirm "$SPEC" "${args[@]}"
+
+    - id: paths
+      shell: bash
+      env:
+        EXECUTABLES: ${{ inputs.executables }}
+      run: |
+        ext=""
+        if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+        {
+          echo "paths<<__PATHS__"
+          while IFS= read -r name; do
+            name="${name%$'\r'}"
+            name="${name#"${name%%[![:space:]]*}"}"
+            name="${name%"${name##*[![:space:]]}"}"
+            [ -n "$name" ] || continue
+            path="dist/${name}${ext}"
+            if [ ! -f "$path" ]; then
+              echo "::error::Expected executable '$path' was not built" >&2
+              exit 1
+            fi
+            echo "$path"
+          done <<< "$EXECUTABLES"
+          echo "__PATHS__"
+        } >> "$GITHUB_OUTPUT"
+
+    - if: ${{ inputs.smoke-test-args != '' && runner.os != 'Windows' }}
+      shell: bash
+      env:
+        PATHS: ${{ steps.paths.outputs.paths }}
+        SMOKE_ARGS: ${{ inputs.smoke-test-args }}
+        QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
+      run: |
+        if [ "$QT_OFFSCREEN" = "true" ]; then export QT_QPA_PLATFORM=offscreen; fi
+        read -r -a args <<< "$SMOKE_ARGS"
+        while IFS= read -r path; do
+          [ -n "$path" ] || continue
+          echo "Smoke testing $path"
+          "./$path" "${args[@]}"
+        done <<< "$PATHS"
+
+    # Windowed (console=False) executables return to the shell immediately
+    # without propagating their exit code; Start-Process -Wait -PassThru
+    # blocks and surfaces the real code.
+    - if: ${{ inputs.smoke-test-args != '' && runner.os == 'Windows' }}
+      shell: pwsh
+      env:
+        PATHS: ${{ steps.paths.outputs.paths }}
+        SMOKE_ARGS: ${{ inputs.smoke-test-args }}
+        QT_OFFSCREEN: ${{ inputs.qt-offscreen }}
+      run: |
+        if ($env:QT_OFFSCREEN -eq 'true') { $env:QT_QPA_PLATFORM = 'offscreen' }
+        foreach ($path in ($env:PATHS -split "`n" | Where-Object { $_.Trim() })) {
+          Write-Host "Smoke testing $path"
+          $exe = (Resolve-Path -LiteralPath $path.Trim()).Path
+          $p = Start-Process -FilePath $exe -ArgumentList $env:SMOKE_ARGS -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) {
+            Write-Error "$path smoke test failed with exit code $($p.ExitCode)"
+            exit $p.ExitCode
+          }
+        }
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.paths.outputs.paths }}
+        if-no-files-found: error
