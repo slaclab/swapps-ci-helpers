@@ -13,3 +13,7 @@ package = false
 
 [tool.coverage.run]
 relative_files = true
+
+[tool.pytest.ini_options]
+# CI checks this repo out under the workspace; don't collect that copy too.
+testpaths = ["test_fixture_app.py"]
