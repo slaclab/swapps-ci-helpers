@@ -1,0 +1,44 @@
+name: Resolve release latest
+description: >-
+  Decide whether a release tag should be marked "latest" by comparing it with
+  the repository's current latest release.
+
+inputs:
+  tag:
+    description: Tag being released
+    default: ${{ github.ref_name }}
+  tag-pattern:
+    description: Extended regex a stable release tag must match
+    default: '^R[0-9]+\.[0-9]+\.[0-9]+$'
+  tag-prefix:
+    description: Prefix stripped from tags before comparing versions
+    default: R
+  current-latest:
+    description: >-
+      Override the current latest release tag instead of querying GitHub. Use
+      "none" to simulate a repository with no releases. Intended for testing.
+    default: ""
+  token:
+    description: Token used to query the current latest release
+    default: ${{ github.token }}
+
+outputs:
+  make_latest:
+    description: '"true" if this release should be marked latest'
+    value: ${{ steps.resolve.outputs.make_latest }}
+  prerelease:
+    description: '"true" if the tag does not match tag-pattern'
+    value: ${{ steps.resolve.outputs.prerelease }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        TAG_PATTERN: ${{ inputs.tag-pattern }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        CURRENT_LATEST: ${{ inputs.current-latest }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/resolve.sh"

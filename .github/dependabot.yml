@@ -3,7 +3,11 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # Composite actions under timing/ pin actions too; "/" alone only scans
+    # .github/workflows.
+    directories:
+      - /
+      - /timing/*
     schedule:
       interval: weekly
       day: monday

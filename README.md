@@ -5,6 +5,9 @@ projects. Instead of copy-pasting the same test/lint/docs workflow into every
 repo (and then forgetting to update them all when a pin or a step changes),
 consumer repos call into the workflows defined here.
 
+Composite actions for the EED timing repositories live in
+[`timing/`](timing/README.md).
+
 ## Usage
 
 Pin `@<SHA>` to a specific commit in this repo — never a mutable branch or

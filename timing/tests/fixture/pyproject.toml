@@ -1,0 +1,15 @@
+[project]
+name = "timing-actions-fixture"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["coverage", "pytest"]
+build = ["pyinstaller"]
+
+[tool.uv]
+package = false
+
+[tool.coverage.run]
+relative_files = true
