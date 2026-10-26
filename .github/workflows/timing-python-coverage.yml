@@ -46,10 +46,9 @@ on:
         default: ""
       artifact-suffix:
         description: >-
-          Unique suffix for the coverage file and artifact. Defaults to the
-          runner OS, which collides when a matrix has two entries on the same
-          OS (e.g. ubuntu-22.04 and ubuntu-24.04); set it to a unique value
-          (the matrix.os expression) in that case.
+          Optional override for the coverage file and artifact suffix. By
+          default each matrix leg uses its runner label (e.g. ubuntu-24.04),
+          which is already unique per leg, so this is rarely needed.
         type: string
         default: ""
       env:
@@ -122,16 +121,27 @@ jobs:
         env:
           PRE_TEST_RUN: ${{ inputs.pre-test-run }}
         run: |
-          bash -c "$PRE_TEST_RUN"
+          # -e -o pipefail so a failing command in a multi-line snippet fails
+          # the step instead of continuing with incomplete setup.
+          bash -eo pipefail -c "$PRE_TEST_RUN"
 
       # --- mirrors timing/pytest-coverage/action.yml ---
+      # Intentional divergence: the suffix defaults to matrix.os here rather
+      # than the action's RUNNER_OS, because a reusable workflow owns its own
+      # matrix and a caller cannot set a per-leg suffix. Keep the rest aligned.
       - name: Resolve coverage artifact names
         id: names
         shell: bash
         env:
+          # Default to the matrix runner label, which is unique per leg even
+          # when two legs share an OS (ubuntu-22.04 vs ubuntu-24.04) — unlike
+          # the action's RUNNER_OS default, which a caller of a reusable
+          # workflow cannot override per leg. A caller may still set
+          # artifact-suffix to force a specific name.
           SUFFIX: ${{ inputs.artifact-suffix }}
+          MATRIX_OS: ${{ matrix.os }}
         run: |
-          suffix="${SUFFIX:-$RUNNER_OS}"
+          suffix="${SUFFIX:-$MATRIX_OS}"
           echo "file=.coverage.${suffix}" >> "$GITHUB_OUTPUT"
           echo "artifact=coverage-${suffix}" >> "$GITHUB_OUTPUT"
 
