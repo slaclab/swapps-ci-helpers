@@ -109,6 +109,9 @@ jobs:
   build:
     needs: validate-deployment-credentials
     if: always() && (needs.validate-deployment-credentials.result == 'success' || needs.validate-deployment-credentials.result == 'skipped')
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-ghcr-image.yml
     with:
       deploy-ref: ${{ inputs.deploy-ref }}
@@ -132,6 +135,7 @@ jobs:
       - validate-deployment-credentials
       - build
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == inputs.deploy-ref
+    permissions: {}
     uses: ./.github/workflows/dispatch-swapps-deployment.yml
     with:
       app: ${{ inputs.app }}

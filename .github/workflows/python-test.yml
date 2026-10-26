@@ -32,4 +32,10 @@ jobs:
 
       - run: uv sync --group dev
 
-      - run: uv run pytest ${{ inputs.test-path }} -v
+      - env:
+          TEST_PATH: ${{ inputs.test-path }}
+        shell: bash
+        run: |
+          # Unquoted to allow a space-separated list of paths.
+          # shellcheck disable=SC2086
+          uv run pytest $TEST_PATH -v
