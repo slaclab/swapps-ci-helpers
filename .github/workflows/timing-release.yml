@@ -1,0 +1,172 @@
+# Reusable release workflow for the EED timing repos.
+#
+# ALIGNMENT CONTRACT
+# ------------------
+# This workflow INLINES the make_latest/prerelease logic rather than calling the
+# composite action, because a reusable workflow cannot cleanly hash-pin a
+# sibling action in its own repository. The duplication is deliberate and
+# confined to this repo:
+#
+#   "Resolve make_latest" step  mirrors  timing/resolve-release-latest/resolve.sh
+#   release step                mirrors  timing/create-release/action.yml
+#
+# The composite actions remain the supported path for any repo that wants the
+# steps directly. resolve.sh additionally has unit tests (test_resolve.sh); if
+# you change the logic, change BOTH it and the inlined step below in the SAME
+# pull request. See timing/README.md (Reusable workflows) for the alignment
+# note.
+#
+# Library consumer stub (py-tlib-core/.github/workflows/release.yml):
+#
+#   on:
+#     push:
+#       tags: ["*"]
+#   jobs:
+#     release:
+#       uses: slaclab/swapps-ci-helpers/.github/workflows/timing-release.yml@<sha>  # vX.Y.Z
+#       permissions:
+#         contents: write
+#
+# GUI consumer stub (attach artifacts built by a prior job):
+#
+#   jobs:
+#     build: { ... produces artifacts ... }
+#     release:
+#       needs: build
+#       uses: slaclab/swapps-ci-helpers/.github/workflows/timing-release.yml@<sha>  # vX.Y.Z
+#       permissions:
+#         contents: write
+#       with:
+#         download-artifacts: true
+#         files: |
+#           dist/*.tar.gz
+#           dist/*.zip
+
+name: Timing release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag to release. Defaults to the triggering ref.
+        type: string
+        default: ""
+      files:
+        description: >-
+          Newline-separated release asset paths or globs. Empty for a
+          library release with no attached binaries.
+        type: string
+        default: ""
+      download-artifacts:
+        description: >-
+          Download all artifacts from the triggering run into ./dist before
+          releasing. Set true when a prior build job uploaded the assets named
+          in `files`.
+        type: boolean
+        default: false
+      generate-release-notes:
+        description: Generate release notes from merged pull requests.
+        type: boolean
+        default: true
+      mark-prereleases:
+        description: >-
+          Publish tags that do not match tag-pattern as pre-releases instead of
+          silently not-latest full releases.
+        type: boolean
+        default: false
+      tag-pattern:
+        description: Extended regex a stable release tag must match.
+        type: string
+        default: '^R[0-9]+\.[0-9]+\.[0-9]+$'
+      tag-prefix:
+        description: Prefix stripped from tags before comparing versions.
+        type: string
+        default: R
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    # Serialize releases per repo so two tags pushed close together cannot race
+    # on the "latest" decision. Mirrors the inline workflows being replaced.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Download build artifacts
+        if: ${{ inputs.download-artifacts }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      # --- mirrors timing/resolve-release-latest/resolve.sh ---
+      # Keep in lockstep with resolve.sh and its unit tests (test_resolve.sh).
+      - name: Resolve make_latest
+        id: latest
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG_PATTERN: ${{ inputs.tag-pattern }}
+          TAG_PREFIX: ${{ inputs.tag-prefix }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          emit() {
+            echo "make_latest=$1" >> "$GITHUB_OUTPUT"
+            echo "prerelease=$2" >> "$GITHUB_OUTPUT"
+          }
+          if ! [[ "$TAG" =~ $TAG_PATTERN ]]; then
+            echo "Tag '$TAG' does not match '$TAG_PATTERN'; not marking as latest." >&2
+            emit false true
+            exit 0
+          fi
+          # The $owner/$name below are GraphQL variables, not shell expansions.
+          # shellcheck disable=SC2016
+          if ! current_latest=$(gh api graphql \
+            -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { latestRelease { tagName } } }' \
+            -f owner="${GITHUB_REPOSITORY%/*}" \
+            -f name="${GITHUB_REPOSITORY#*/}" \
+            --jq '.data.repository.latestRelease.tagName // ""'); then
+            echo "Unable to determine the current latest release; refusing to guess." >&2
+            exit 1
+          fi
+          current_latest="${current_latest:-none}"
+          if [ "$current_latest" = "none" ]; then
+            emit true false
+            exit 0
+          fi
+          if ! [[ "$current_latest" =~ $TAG_PATTERN ]]; then
+            echo "Current latest '$current_latest' does not match '$TAG_PATTERN'; not marking as latest." >&2
+            emit false false
+            exit 0
+          fi
+          current_ver="${TAG#"$TAG_PREFIX"}"
+          latest_ver="${current_latest#"$TAG_PREFIX"}"
+          highest=$(printf '%s\n%s\n' "$current_ver" "$latest_ver" | sort -V | tail -n1)
+          if [ "$highest" = "$current_ver" ]; then
+            emit true false
+          else
+            emit false false
+          fi
+
+      # --- mirrors timing/create-release/action.yml (release step) ---
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: ${{ inputs.files }}
+          generate_release_notes: ${{ inputs.generate-release-notes }}
+          make_latest: ${{ steps.latest.outputs.make_latest }}
+          prerelease: ${{ inputs.mark-prereleases == true && steps.latest.outputs.prerelease == 'true' }}
+          token: ${{ github.token }}
+      # --- end mirror ---
