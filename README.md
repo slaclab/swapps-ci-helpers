@@ -313,3 +313,28 @@ repo's own [`.github/dependabot.yml`](.github/dependabot.yml) for an
 example), and it will open a PR bumping your `uses:
 .../swapps-ci-helpers/...@<SHA>` reference whenever this repo publishes a new
 commit.
+
+## Developing this repo
+
+[`lint.yml`](.github/workflows/lint.yml) runs on every PR to this repo:
+
+- **actionlint** checks the workflows in `.github/workflows/`, including
+  shellcheck on `run:` blocks. It doesn't check composite actions such as
+  those under `timing/`.
+- **zizmor** audits the workflows, the composite actions, and
+  `dependabot.yml` for security issues, at medium severity and above.
+
+Both tools are pinned so Dependabot can update them: actionlint and
+shellcheck in the `lint` group of [`pyproject.toml`](pyproject.toml) /
+`uv.lock`, and zizmor through the SHA-pinned `zizmorcore/zizmor-action`.
+
+Run them locally before pushing:
+
+```bash
+uv run --only-group lint actionlint
+uvx zizmor --min-severity medium .
+```
+
+Pass inputs to `run:` steps through `env:` rather than `${{ }}` in the
+script. If a finding is intentional, suppress it inline with a reason, e.g.
+`# zizmor: ignore[template-injection]`.
