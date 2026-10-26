@@ -1,0 +1,59 @@
+name: Create release
+description: >-
+  Create a GitHub Release for a tag, marking it latest only when it is the
+  highest stable version.
+
+inputs:
+  tag:
+    description: Tag to release
+    default: ${{ github.ref_name }}
+  files:
+    description: Newline-separated release asset paths or globs
+    default: ""
+  generate-release-notes:
+    description: Generate release notes from merged pull requests
+    default: "true"
+  mark-prereleases:
+    description: Publish tags that do not match tag-pattern as pre-releases
+    default: "false"
+  tag-pattern:
+    description: Extended regex a stable release tag must match
+    default: '^R[0-9]+\.[0-9]+\.[0-9]+$'
+  tag-prefix:
+    description: Prefix stripped from tags before comparing versions
+    default: R
+  token:
+    description: Token with contents:write on the repository
+    default: ${{ github.token }}
+
+outputs:
+  url:
+    description: Release URL
+    value: ${{ steps.release.outputs.url }}
+  make_latest:
+    description: Whether the release was marked latest
+    value: ${{ steps.latest.outputs.make_latest }}
+
+runs:
+  using: composite
+  steps:
+    # Composite actions cannot call sibling actions by relative path, so run
+    # resolve-release-latest's script directly to keep one source of truth.
+    - id: latest
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        TAG_PATTERN: ${{ inputs.tag-pattern }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/../resolve-release-latest/resolve.sh"
+
+    - id: release
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      with:
+        tag_name: ${{ inputs.tag }}
+        files: ${{ inputs.files }}
+        generate_release_notes: ${{ inputs.generate-release-notes }}
+        make_latest: ${{ steps.latest.outputs.make_latest }}
+        prerelease: ${{ inputs.mark-prereleases == 'true' && steps.latest.outputs.prerelease == 'true' }}
+        token: ${{ inputs.token }}

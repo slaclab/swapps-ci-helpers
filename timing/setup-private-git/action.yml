@@ -1,0 +1,28 @@
+name: Set up private Git access
+description: >-
+  Rewrite https://<host>/ Git URLs to authenticate with a token, so tools like
+  uv can fetch private or internal repositories. Works on Linux, macOS,
+  Windows, and in container jobs, and does not need the gh CLI.
+
+inputs:
+  token:
+    description: Token with read access to the private repositories
+    required: true
+  host:
+    description: Git host to authenticate
+    default: github.com
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        HOST: ${{ inputs.host }}
+      run: |
+        if [ -z "$TOKEN" ]; then
+          echo "::error::setup-private-git: token is empty" >&2
+          exit 1
+        fi
+        echo "::add-mask::$TOKEN"
+        git config --global "url.https://x-access-token:${TOKEN}@${HOST}/.insteadOf" "https://${HOST}/"

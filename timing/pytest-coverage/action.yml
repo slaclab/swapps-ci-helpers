@@ -1,0 +1,68 @@
+name: Pytest with coverage
+description: >-
+  Sync a uv project, run pytest under coverage, and upload the coverage data
+  as a coverage-<suffix> artifact for coverage-comment to merge. Requires
+  checkout and uv to be set up first.
+
+inputs:
+  dependency-group:
+    description: uv dependency group to sync
+    default: dev
+  pytest-args:
+    description: >-
+      Extra pytest arguments, one per line. Lines are passed as-is, with no
+      shell quoting, so `-k` and `not slow` go on separate lines.
+    default: ""
+  artifact-suffix:
+    description: >-
+      Unique suffix for the coverage file and artifact; set it per matrix
+      entry. Defaults to the runner OS.
+    default: ""
+  step-summary:
+    description: Also write the pytest output to the job summary
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - id: names
+      shell: bash
+      env:
+        SUFFIX: ${{ inputs.artifact-suffix }}
+      run: |
+        suffix="${SUFFIX:-$RUNNER_OS}"
+        echo "file=.coverage.${suffix}" >> "$GITHUB_OUTPUT"
+        echo "artifact=coverage-${suffix}" >> "$GITHUB_OUTPUT"
+
+    - shell: bash
+      env:
+        GROUP: ${{ inputs.dependency-group }}
+      run: uv sync --group "$GROUP"
+
+    - shell: bash
+      env:
+        COVERAGE_FILE: ${{ steps.names.outputs.file }}
+        PYTEST_ARGS: ${{ inputs.pytest-args }}
+        STEP_SUMMARY: ${{ inputs.step-summary }}
+      run: |
+        args=()
+        while IFS= read -r arg; do
+          arg="${arg%$'\r'}"
+          if [ -n "$arg" ]; then args+=("$arg"); fi
+        done <<< "$PYTEST_ARGS"
+        if [ "$STEP_SUMMARY" = "true" ]; then
+          printf '## Test results\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          uv run coverage run -m pytest "${args[@]}" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          printf '```\n' >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+        fi
+        uv run coverage run -m pytest "${args[@]}"
+
+    - if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.names.outputs.artifact }}
+        path: ${{ steps.names.outputs.file }}
+        include-hidden-files: true
+        if-no-files-found: error
