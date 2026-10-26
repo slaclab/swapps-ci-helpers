@@ -109,6 +109,11 @@ jobs:
   build:
     needs: validate-deployment-credentials
     if: always() && (needs.validate-deployment-credentials.result == 'success' || needs.validate-deployment-credentials.result == 'skipped')
+    # Caps the called workflow's token: build-ghcr-image only needs to read the
+    # repo and push to GHCR.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-ghcr-image.yml
     with:
       deploy-ref: ${{ inputs.deploy-ref }}
@@ -132,6 +137,9 @@ jobs:
       - validate-deployment-credentials
       - build
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == inputs.deploy-ref
+    # dispatch-swapps-deployment runs with no GITHUB_TOKEN permissions and mints
+    # its own scoped GitHub App token, so the caller needs to grant nothing.
+    permissions: {}
     uses: ./.github/workflows/dispatch-swapps-deployment.yml
     with:
       app: ${{ inputs.app }}
