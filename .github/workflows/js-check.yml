@@ -31,4 +31,5 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Checks
-        run: ${{ inputs.check-command }}
+        # Runs the command set by the calling workflow.
+        run: ${{ inputs.check-command }} # zizmor: ignore[template-injection]
