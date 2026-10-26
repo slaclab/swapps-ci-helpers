@@ -94,8 +94,9 @@ jobs:
       cancel-in-progress: false
       # Keep every overlapping tag's release pending rather than letting a newer
       # pending run cancel an older one (the default keeps only one pending).
-      # `queue` is a valid, GA concurrency option; actionlint's schema does not
-      # yet recognize it, so actionlint flags this line as an unexpected key.
+      # `queue` is a valid, GA concurrency option that actionlint's schema does
+      # not recognize yet; .github/actionlint.yaml ignores that one error until
+      # the upstream fix ships (rhysd/actionlint#654, issue #657).
       queue: max
     permissions:
       contents: write
