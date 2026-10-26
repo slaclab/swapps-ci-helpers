@@ -229,6 +229,7 @@ Inputs:
 | `provenance` | `""` | Provenance setting passed to `docker/build-push-action` |
 | `cache-from` | `"type=gha"` | Docker build cache source |
 | `cache-to` | `"type=gha,mode=max"` | Docker build cache destination |
+| `npm-github-packages` | `false` | Give the build npm auth for GitHub Packages as BuildKit secret `npmrc`; see [Private npm packages from GitHub Packages](#private-npm-packages-from-github-packages) |
 
 Secrets:
 
@@ -269,7 +270,66 @@ It accepts the image-related inputs listed for
 `build-image-and-dispatch.yml`: `deploy-ref`, `image-name`, `dockerfile`,
 `context`, `platforms`, `setup-qemu`, `sha-tag-prefix`, `latest-tag`,
 `extra-tags`, `labels`, `build-args`, `target`, `provenance`, `cache-from`,
-and `cache-to`.
+`cache-to`, and `npm-github-packages`.
+
+### Private npm packages from GitHub Packages
+
+Both image workflows can install npm packages from GitHub Packages
+(`npm.pkg.github.com`) inside the Docker build. Set `npm-github-packages: true`
+and the `validate-build` and `publish` builds receive a BuildKit secret with id
+`npmrc`. It is a one-line user-level `.npmrc` that authenticates with the
+calling repository's `GITHUB_TOKEN`:
+
+```text
+//npm.pkg.github.com/:_authToken=<GITHUB_TOKEN>
+```
+
+```yaml
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: slaclab/swapps-ci-helpers/.github/workflows/build-ghcr-image.yml@<SHA>
+    with:
+      dockerfile: docker/Dockerfile
+      npm-github-packages: true
+```
+
+In the Dockerfile, mount the secret on the install step only. BuildKit does not
+write secret mounts into image layers or the build cache:
+
+```dockerfile
+# .npmrc maps the scope, e.g. @slaclab:registry=https://npm.pkg.github.com (no token)
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
+    corepack enable && pnpm install --frozen-lockfile
+```
+
+- Keep the scope-to-registry mapping in the repository's committed `.npmrc`,
+  with no token. The secret adds only the auth line, as the user-level config.
+  `/root/.npmrc` assumes the build stage runs as root; for another user, mount
+  it at that user's `$HOME/.npmrc`.
+- Secret mounts are optional by default, so a plain `docker build` without
+  `--secret` still works while nothing private is installed. To build locally
+  with auth, pass your own config:
+  `docker build --secret id=npmrc,src=$HOME/.npmrc ...`.
+- Each package must grant the calling repository read access under Package
+  settings → Manage Actions access, or the token is refused.
+- `validate-build` requests `packages: read` whether or not the input is set,
+  because job permissions can't depend on inputs. A called workflow's jobs
+  can't receive more than the calling job grants, and GitHub refuses to start
+  the run if they ask for more. The calling job already has to grant
+  `packages: write` for `publish`, as in the examples above, so that covers it.
+- `publish` runs with `packages: write` to push to GHCR, and the secret carries
+  that same token. Anything that runs while it is mounted, including dependency
+  install scripts, can use it. Keep the mount on the install step and limit
+  which dependencies may run build scripts.
+- With `npm-github-packages: true`, `validate-build` fails on
+  `pull_request_target` events. That trigger builds the pull request head with
+  the base repository's token, so the token would reach untrusted code.
+- Never pass a registry token through `build-args`: build args are recorded in
+  the image metadata and provenance.
 
 ### Dispatch SWAPPS Deployment (`dispatch-swapps-deployment.yml`)
 
