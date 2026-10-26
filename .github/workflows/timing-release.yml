@@ -92,6 +92,11 @@ jobs:
     concurrency:
       group: release-${{ github.repository }}
       cancel-in-progress: false
+      # Keep every overlapping tag's release pending rather than letting a newer
+      # pending run cancel an older one (the default keeps only one pending).
+      # `queue` is a valid, GA concurrency option; actionlint's schema does not
+      # yet recognize it, so actionlint flags this line as an unexpected key.
+      queue: max
     permissions:
       contents: write
     steps:

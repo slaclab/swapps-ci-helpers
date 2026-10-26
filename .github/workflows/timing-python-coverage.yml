@@ -44,6 +44,14 @@ on:
         description: Extra pytest arguments, one per line.
         type: string
         default: ""
+      artifact-suffix:
+        description: >-
+          Unique suffix for the coverage file and artifact. Defaults to the
+          runner OS, which collides when a matrix has two entries on the same
+          OS (e.g. ubuntu-22.04 and ubuntu-24.04); set it to a unique value
+          (the matrix.os expression) in that case.
+        type: string
+        default: ""
       env:
         description: >-
           Extra environment variables for the test step, as newline-separated
@@ -99,7 +107,11 @@ jobs:
         run: |
           while IFS= read -r line; do
             line="${line%$'\r'}"
-            [ -n "$line" ] && echo "$line" >> "$GITHUB_ENV"
+            # Keep the `if` as a statement: a trailing `&&` here would make the
+            # final (blank) line's false test the step's exit status and fail it.
+            if [ -n "$line" ]; then
+              echo "$line" >> "$GITHUB_ENV"
+            fi
           done <<< "$EXTRA_ENV"
 
       - name: Pre-test setup
@@ -117,7 +129,7 @@ jobs:
         id: names
         shell: bash
         env:
-          SUFFIX: ""  # defaults to RUNNER_OS, as the action does
+          SUFFIX: ${{ inputs.artifact-suffix }}
         run: |
           suffix="${SUFFIX:-$RUNNER_OS}"
           echo "file=.coverage.${suffix}" >> "$GITHUB_OUTPUT"
@@ -172,6 +184,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Must match the build job's ref so coverage maps against the same
+          # sources the tests ran on.
+          ref: ${{ inputs.checkout-ref }}
           persist-credentials: true
 
       # --- mirrors timing/coverage-comment/action.yml ---
