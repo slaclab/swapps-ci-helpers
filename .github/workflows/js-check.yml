@@ -33,4 +33,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Checks
-        run: ${{ inputs.check-command }}
+        # The command string is passed via env and run through the shell, so
+        # operators like && in the default still work, without letting the
+        # value expand inside the run: template (zizmor template-injection).
+        env:
+          CHECK_COMMAND: ${{ inputs.check-command }}
+        run: bash -c "$CHECK_COMMAND"
