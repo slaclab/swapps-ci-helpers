@@ -69,6 +69,10 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ inputs.deployment-owner || github.repository_owner }}
           repositories: ${{ inputs.deployment-repo }}
+          # Scope the token to the one permission a repository_dispatch POST
+          # needs, rather than inheriting all of the App's installation
+          # permissions (zizmor github-app).
+          permission-contents: write
 
       - name: Dispatch deploy
         env:
