@@ -189,7 +189,8 @@ jobs for the common cases, so a consuming repo's workflow shrinks to a `uses:`
 stub:
 
 - `timing-python-coverage.yml` — the test + coverage-comment CI job
-  (optionally across an OS matrix). Mirrors `pytest-coverage` and
+  (optionally across an OS and/or Python-version matrix, via the `runs-on`
+  and `python-versions` JSON-array inputs). Mirrors `pytest-coverage` and
   `coverage-comment`.
 - `timing-release.yml` — the tag-triggered release job, including the
   make_latest/prerelease decision. Mirrors `resolve-release-latest` and

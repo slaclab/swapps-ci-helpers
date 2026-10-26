@@ -36,6 +36,13 @@ on:
           '["ubuntu-latest"]' or '["ubuntu-latest","windows-latest","macos-latest"]'.
         type: string
         default: '["ubuntu-latest"]'
+      python-versions:
+        description: >-
+          JSON array of Python versions to matrix the build over, e.g.
+          '["3.12"]' or '["3.11","3.12","3.13"]'. The build runs once per
+          (runner, version) pair.
+        type: string
+        default: '["3.12"]'
       dependency-group:
         description: uv dependency group to sync before testing.
         type: string
@@ -47,8 +54,9 @@ on:
       artifact-suffix:
         description: >-
           Optional override for the coverage file and artifact suffix. By
-          default each matrix leg uses its runner label (e.g. ubuntu-24.04),
-          which is already unique per leg, so this is rarely needed.
+          default each matrix leg uses "<os>-py<version>" (e.g.
+          ubuntu-latest-py3.12), already unique per leg, so this is rarely
+          needed.
         type: string
         default: ""
       env:
@@ -80,12 +88,13 @@ on:
 
 jobs:
   build:
-    name: Test (${{ matrix.os }})
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.runs-on) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,7 +105,7 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "latest"
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Apply extra environment variables
         if: ${{ inputs.env != '' }}
@@ -126,22 +135,20 @@ jobs:
           bash -eo pipefail -c "$PRE_TEST_RUN"
 
       # --- mirrors timing/pytest-coverage/action.yml ---
-      # Intentional divergence: the suffix defaults to matrix.os here rather
-      # than the action's RUNNER_OS, because a reusable workflow owns its own
-      # matrix and a caller cannot set a per-leg suffix. Keep the rest aligned.
+      # Intentional divergence: the suffix defaults to "<os>-py<version>" here
+      # rather than the action's RUNNER_OS, because a reusable workflow owns its
+      # own os x python-version matrix and a caller cannot set a per-leg suffix.
+      # This keeps every leg's coverage artifact distinct. Keep the rest aligned.
       - name: Resolve coverage artifact names
         id: names
         shell: bash
         env:
-          # Default to the matrix runner label, which is unique per leg even
-          # when two legs share an OS (ubuntu-22.04 vs ubuntu-24.04) — unlike
-          # the action's RUNNER_OS default, which a caller of a reusable
-          # workflow cannot override per leg. A caller may still set
-          # artifact-suffix to force a specific name.
+          # A caller may still set artifact-suffix to force a specific name.
           SUFFIX: ${{ inputs.artifact-suffix }}
           MATRIX_OS: ${{ matrix.os }}
+          MATRIX_PY: ${{ matrix.python-version }}
         run: |
-          suffix="${SUFFIX:-$MATRIX_OS}"
+          suffix="${SUFFIX:-${MATRIX_OS}-py${MATRIX_PY}}"
           echo "file=.coverage.${suffix}" >> "$GITHUB_OUTPUT"
           echo "artifact=coverage-${suffix}" >> "$GITHUB_OUTPUT"
 
