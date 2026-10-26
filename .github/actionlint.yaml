@@ -1,0 +1,10 @@
+# actionlint configuration, read automatically by `actionlint` (CI and local).
+
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      # `queue` is a valid, GA concurrency key, but actionlint's schema does not
+      # recognize it yet and reports it as an unexpected key. Workflows using
+      # queue: max (e.g. timing-release) would otherwise fail actionlint.
+      # Remove once actionlint ships the fix: rhysd/actionlint#654 (issue #657).
+      - 'unexpected key "queue" for "concurrency" section'
