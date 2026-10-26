@@ -1,0 +1,44 @@
+name: Coverage comment
+description: >-
+  Merge the coverage-* artifacts uploaded by pytest-coverage and report them
+  with python-coverage-comment-action. Requires a checkout with persisted
+  credentials, and pull-requests:write plus contents:write on the job.
+
+inputs:
+  github-token:
+    description: Token for posting the comment and storing coverage data
+    default: ${{ github.token }}
+  only-on-pull-request:
+    description: >-
+      Skip on non-PR events. Keep "false" so pushes to the default branch
+      record the baseline that PR comments compare against.
+    default: "false"
+
+outputs:
+  comment-file-written:
+    description: '"true" if a comment file was written for a later workflow to post'
+    value: ${{ steps.comment.outputs.COMMENT_FILE_WRITTEN }}
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ inputs.only-on-pull-request != 'true' || github.event_name == 'pull_request' }}
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: coverage-*
+        merge-multiple: true
+
+    - id: comment
+      if: ${{ inputs.only-on-pull-request != 'true' || github.event_name == 'pull_request' }}
+      uses: py-cov-action/python-coverage-comment-action@e5fb2218463c3377f3504b0c5b5646ed53da7a2f # v4.5
+      with:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MERGE_COVERAGE_FILES: true
+
+    # Lets a separate workflow_run workflow post the comment for fork PRs,
+    # whose tokens cannot write to the base repository.
+    - if: ${{ steps.comment.outputs.COMMENT_FILE_WRITTEN == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: python-coverage-comment-action
+        path: python-coverage-comment-action.txt
