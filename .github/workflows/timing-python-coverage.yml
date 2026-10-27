@@ -1,0 +1,233 @@
+# Reusable CI workflow for the EED timing repos.
+#
+# ALIGNMENT CONTRACT
+# ------------------
+# This workflow INLINES the logic of two composite actions rather than calling
+# them, because a reusable workflow cannot cleanly hash-pin a sibling action in
+# its own repository. The duplication is deliberate and confined to this repo:
+#
+#   build job    mirrors  timing/pytest-coverage/action.yml
+#   coverage job mirrors  timing/coverage-comment/action.yml
+#
+# The composite actions remain the supported path for any repo that wants the
+# steps without the surrounding job structure. If you change either action's
+# shell logic, update the matching block here in the SAME pull request. Both
+# copies are owned by the same CODEOWNERS, so a reviewer can enforce this.
+# See timing/README.md (Reusable workflows) for the alignment note.
+#
+# Consumer stub (e.g. py-tlib-core/.github/workflows/test.yml):
+#
+#   jobs:
+#     ci:
+#       uses: slaclab/swapps-ci-helpers/.github/workflows/timing-python-coverage.yml@<sha>  # vX.Y.Z
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       # all inputs optional; defaults reproduce the single-OS library setup
+
+name: Timing Python coverage
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: >-
+          JSON array of runner labels to matrix the build over, e.g.
+          '["ubuntu-latest"]' or '["ubuntu-latest","windows-latest","macos-latest"]'.
+        type: string
+        default: '["ubuntu-latest"]'
+      python-versions:
+        description: >-
+          JSON array of Python versions to matrix the build over, e.g.
+          '["3.12"]' or '["3.11","3.12","3.13"]'. The build runs once per
+          (runner, version) pair.
+        type: string
+        default: '["3.12"]'
+      dependency-group:
+        description: uv dependency group to sync before testing.
+        type: string
+        default: dev
+      pytest-args:
+        description: Extra pytest arguments, one per line.
+        type: string
+        default: ""
+      artifact-suffix:
+        description: >-
+          Optional override for the coverage file and artifact suffix. By
+          default each matrix leg uses "<os>-py<version>" (e.g.
+          ubuntu-latest-py3.12), already unique per leg, so this is rarely
+          needed.
+        type: string
+        default: ""
+      env:
+        description: >-
+          Extra environment variables for the test step, as newline-separated
+          KEY=value pairs. Used for e.g. QT_QPA_PLATFORM=offscreen on GUI repos.
+        type: string
+        default: ""
+      pre-test-run:
+        description: >-
+          Optional shell snippet run after checkout and before testing, e.g. to
+          install system packages (apt/dnf) that the test suite needs.
+        type: string
+        default: ""
+      step-summary:
+        description: Also write pytest output to each job summary.
+        type: boolean
+        default: false
+      only-comment-on-pull-request:
+        description: >-
+          Skip the coverage comment on non-PR events. Keep false so pushes to
+          the default branch record the baseline PR comments compare against.
+        type: boolean
+        default: false
+      checkout-ref:
+        description: Ref to check out. Defaults to the triggering ref.
+        type: string
+        default: ""
+
+jobs:
+  build:
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runs-on) }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.checkout-ref }}
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "latest"
+          python-version: ${{ matrix.python-version }}
+
+      - name: Apply extra environment variables
+        if: ${{ inputs.env != '' }}
+        shell: bash
+        env:
+          EXTRA_ENV: ${{ inputs.env }}
+        run: |
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            # Keep the `if` as a statement: a trailing `&&` here would make the
+            # final (blank) line's false test the step's exit status and fail it.
+            if [ -n "$line" ]; then
+              echo "$line" >> "$GITHUB_ENV"
+            fi
+          done <<< "$EXTRA_ENV"
+
+      - name: Pre-test setup
+        if: ${{ inputs.pre-test-run != '' }}
+        shell: bash
+        # Routed through env, never interpolated into run: directly, so a
+        # caller-supplied value cannot inject shell (zizmor template-injection).
+        env:
+          PRE_TEST_RUN: ${{ inputs.pre-test-run }}
+        run: |
+          # -e -o pipefail so a failing command in a multi-line snippet fails
+          # the step instead of continuing with incomplete setup.
+          bash -eo pipefail -c "$PRE_TEST_RUN"
+
+      # --- mirrors timing/pytest-coverage/action.yml ---
+      # Intentional divergence: the suffix defaults to "<os>-py<version>" here
+      # rather than the action's RUNNER_OS, because a reusable workflow owns its
+      # own os x python-version matrix and a caller cannot set a per-leg suffix.
+      # This keeps every leg's coverage artifact distinct. Keep the rest aligned.
+      - name: Resolve coverage artifact names
+        id: names
+        shell: bash
+        env:
+          # A caller may still set artifact-suffix to force a specific name.
+          SUFFIX: ${{ inputs.artifact-suffix }}
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_PY: ${{ matrix.python-version }}
+        run: |
+          suffix="${SUFFIX:-${MATRIX_OS}-py${MATRIX_PY}}"
+          echo "file=.coverage.${suffix}" >> "$GITHUB_OUTPUT"
+          echo "artifact=coverage-${suffix}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync dependencies
+        shell: bash
+        env:
+          GROUP: ${{ inputs.dependency-group }}
+        run: uv sync --group "$GROUP"
+
+      - name: Run pytest under coverage
+        shell: bash
+        env:
+          COVERAGE_FILE: ${{ steps.names.outputs.file }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+          STEP_SUMMARY: ${{ inputs.step-summary }}
+        run: |
+          args=()
+          while IFS= read -r arg; do
+            arg="${arg%$'\r'}"
+            if [ -n "$arg" ]; then args+=("$arg"); fi
+          done <<< "$PYTEST_ARGS"
+          if [ "$STEP_SUMMARY" = "true" ]; then
+            printf '## Test results\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
+            status=0
+            uv run coverage run -m pytest "${args[@]}" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+            printf '```\n' >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+          uv run coverage run -m pytest "${args[@]}"
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.names.outputs.artifact }}
+          path: ${{ steps.names.outputs.file }}
+          include-hidden-files: true
+          if-no-files-found: error
+      # --- end mirror ---
+
+  coverage:
+    name: Coverage comment
+    runs-on: ubuntu-latest
+    needs: build
+    # Run even if a matrix leg failed, so coverage still reports on green legs.
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Must match the build job's ref so coverage maps against the same
+          # sources the tests ran on.
+          ref: ${{ inputs.checkout-ref }}
+          persist-credentials: true
+
+      # --- mirrors timing/coverage-comment/action.yml ---
+      - name: Download coverage artifacts
+        if: ${{ inputs.only-comment-on-pull-request != true || github.event_name == 'pull_request' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - name: Coverage comment
+        id: comment
+        if: ${{ inputs.only-comment-on-pull-request != true || github.event_name == 'pull_request' }}
+        uses: py-cov-action/python-coverage-comment-action@e5fb2218463c3377f3504b0c5b5646ed53da7a2f # v4.5
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_COVERAGE_FILES: true
+
+      # Lets a separate workflow_run workflow post the comment for fork PRs,
+      # whose tokens cannot write to the base repository.
+      - name: Store coverage comment
+        if: ${{ steps.comment.outputs.COMMENT_FILE_WRITTEN == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt
+      # --- end mirror ---

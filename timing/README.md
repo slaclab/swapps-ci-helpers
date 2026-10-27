@@ -182,6 +182,45 @@ and macOS executables before running or archiving them.
 
 Output: `paths`, the built executable paths.
 
+## Reusable workflows
+
+Two reusable workflows in `.github/workflows/` bundle these actions into whole
+jobs for the common cases, so a consuming repo's workflow shrinks to a `uses:`
+stub:
+
+- `timing-python-coverage.yml` — the test + coverage-comment CI job
+  (optionally across an OS and/or Python-version matrix, via the `runs-on`
+  and `python-versions` JSON-array inputs). Mirrors `pytest-coverage` and
+  `coverage-comment`.
+- `timing-release.yml` — the tag-triggered release job, including the
+  make_latest/prerelease decision. Mirrors `resolve-release-latest` and
+  `create-release`.
+
+Use the composite actions directly when you need the steps but your own job
+structure (custom `runs-on`, `container`, extra steps); use the reusable
+workflows when the standard job shape fits and you want the smallest consumer.
+
+### Alignment contract
+
+A reusable workflow cannot cleanly hash-pin a composite action in its **own**
+repository: a SHA pin would be circular (the commit cannot reference its own
+hash) and must be bumped on every release, and a `./local` path resolves
+against the *caller's* checkout, not this repo. So the reusable workflows
+**inline a copy** of each action's shell logic instead of calling it, and pin
+only the external JavaScript actions.
+
+This duplicates logic, but confines the duplication to this repository, where
+both copies sit under the same `CODEOWNERS` and can be changed in one pull
+request — far better than N independently-drifting workflow copies across the
+timing repos. The trade is explicit:
+
+- The composite actions stay the canonical, reusable implementation.
+- Each inlined block in a reusable workflow is marked with
+  `--- mirrors <action> ---` comments.
+- **If you change an action's shell logic, update the matching inlined block in
+  the same pull request** (and `resolve.sh`'s unit tests, for the release
+  path). Reviewers enforce this; there is no automated drift check yet.
+
 ## Development
 
 Run the `resolve.sh` unit tests locally:
