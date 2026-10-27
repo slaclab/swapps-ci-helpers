@@ -190,7 +190,9 @@ stub:
 
 - `timing-python-coverage.yml` — the test + coverage-comment CI job
   (optionally across an OS and/or Python-version matrix, via the `runs-on`
-  and `python-versions` JSON-array inputs). Mirrors `pytest-coverage` and
+  and `python-versions` JSON-array inputs). Pass the optional
+  `timing-repos-token` secret for projects whose `uv sync` must resolve
+  private dependencies. Mirrors `pytest-coverage`, `setup-private-git`, and
   `coverage-comment`.
 - `timing-release.yml` — the tag-triggered release job, including the
   make_latest/prerelease decision. Mirrors `resolve-release-latest` and

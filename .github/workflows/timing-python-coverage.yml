@@ -24,6 +24,16 @@
 #         contents: write
 #         pull-requests: write
 #       # all inputs optional; defaults reproduce the single-OS library setup
+#
+# Projects with private dependencies pass a token so `uv sync` can resolve them:
+#
+#     ci:
+#       uses: slaclab/swapps-ci-helpers/.github/workflows/timing-python-coverage.yml@<sha>  # vX.Y.Z
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       secrets:
+#         timing-repos-token: ${{ secrets.TIMING_REPOS_TOKEN }}
 
 name: Timing Python coverage
 
@@ -85,6 +95,14 @@ on:
         description: Ref to check out. Defaults to the triggering ref.
         type: string
         default: ""
+    secrets:
+      timing-repos-token:
+        description: >-
+          Token with read access to private dependencies. When set, the build
+          configures Git to authenticate with it before `uv sync`, so projects
+          that depend on private repos can resolve them. Optional; omit for
+          projects with no private dependencies.
+        required: false
 
 jobs:
   build:
@@ -95,6 +113,10 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.runs-on) }}
         python-version: ${{ fromJSON(inputs.python-versions) }}
+    # The secrets context is not available in a step-level `if:`, so surface the
+    # token as a job env var that the private-Git step can be gated on.
+    env:
+      TIMING_REPOS_TOKEN: ${{ secrets.timing-repos-token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,6 +128,15 @@ jobs:
         with:
           version: "latest"
           python-version: ${{ matrix.python-version }}
+
+      # Authenticate Git for private dependency resolution when a token is
+      # provided, so the uv sync below can fetch private repos. Runs before
+      # any dependency install. No-op when the secret is unset.
+      - name: Set up private Git access
+        if: ${{ env.TIMING_REPOS_TOKEN != '' }}
+        uses: slaclab/swapps-ci-helpers/timing/setup-private-git@c7dbec6a18130fc7890890c415908080a2b52af8 # v1.1.4
+        with:
+          token: ${{ env.TIMING_REPOS_TOKEN }}
 
       - name: Apply extra environment variables
         if: ${{ inputs.env != '' }}
