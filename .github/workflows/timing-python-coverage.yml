@@ -130,13 +130,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # Authenticate Git for private dependency resolution when a token is
-      # provided, so the uv sync below can fetch private repos. Runs before
-      # any dependency install. No-op when the secret is unset.
+      # provided, so the uv sync below can fetch private repos. Runs before any
+      # dependency install; skipped when the secret is unset.
+      # --- mirrors timing/setup-private-git/action.yml ---
+      # The action's `host` input is fixed to github.com here (its default),
+      # since this workflow has no host input. Keep the rest aligned.
       - name: Set up private Git access
         if: ${{ env.TIMING_REPOS_TOKEN != '' }}
-        uses: slaclab/swapps-ci-helpers/timing/setup-private-git@c7dbec6a18130fc7890890c415908080a2b52af8 # v1.1.4
-        with:
-          token: ${{ env.TIMING_REPOS_TOKEN }}
+        shell: bash
+        env:
+          TOKEN: ${{ env.TIMING_REPOS_TOKEN }}
+          HOST: github.com
+        run: |
+          echo "::add-mask::$TOKEN"
+          git config --global "url.https://x-access-token:${TOKEN}@${HOST}/.insteadOf" "https://${HOST}/"
+      # --- end mirror ---
 
       - name: Apply extra environment variables
         if: ${{ inputs.env != '' }}
