@@ -13,6 +13,43 @@ Composite actions for the EED timing repositories live in
 Pin `@<SHA>` to a specific commit in this repo — never a mutable branch or
 tag — so a consumer only picks up changes when it deliberately bumps the pin.
 
+### Triggers and concurrency
+
+The test and check examples below share one trigger and concurrency setup.
+Both live in the calling workflow, since a reusable workflow can't set its
+caller's `on:` and its `github` context is the caller's.
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+- `pull_request` has no `branches:` filter, so stacked PRs (whose base is
+  another feature branch) still get CI. With `branches: [main]` they get no
+  checks at all.
+- `push` is limited to `main`. An unfiltered `push` runs a second, duplicate
+  run for every push to a branch with an open PR, and the concurrency group
+  can't collapse the two because their refs differ (`refs/heads/<branch>`
+  vs `refs/pull/<N>/merge`). A branch without a PR gets no CI until one is
+  opened; use `workflow_dispatch` to run it by hand.
+- Each PR gets its own group, and a new push cancels that PR's superseded
+  run. Runs on `main` are never cancelled in progress.
+
+Keep the `concurrency` block in the caller rather than adding one to the
+reusable workflows here. A group set in both places would resolve to the
+same name, and GitHub cancels the run as a concurrency deadlock.
+
+A PR only picks up a trigger change once its merge ref contains it, so
+stacked PRs need their bottom branch updated from `main` after the change
+lands.
+
 ### Tests (`python-test.yml`)
 
 ```yaml
@@ -20,8 +57,13 @@ name: Test
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -46,8 +88,13 @@ name: Test
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -79,8 +126,13 @@ name: Pre-commit
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pre-commit:
@@ -102,8 +154,13 @@ name: Check
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
