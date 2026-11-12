@@ -18,7 +18,7 @@ on:
       qt-platform:
         description: "Value for QT_QPA_PLATFORM (e.g. 'offscreen' for headless Qt tests); empty to leave unset"
         type: string
-        default: ""
+        default: "offscreen"
 
 jobs:
   test:

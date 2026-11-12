@@ -80,7 +80,7 @@ Inputs:
 | `python-version` | `"3.12"` | Python version to run tests against |
 | `os-matrix` | `'["ubuntu-latest", "windows-latest", "macos-latest"]'` | JSON array string of runner OSes |
 | `test-path` | `"tests/"` | Path passed to `pytest` |
-| `qt-platform` | `""` | Value for `QT_QPA_PLATFORM` (e.g. `"offscreen"` for headless Qt tests); empty to leave unset |
+| `qt-platform` | `"offscreen"` | Value for `QT_QPA_PLATFORM` (e.g. `"offscreen"` for headless Qt tests); empty to leave unset |
 
 ### JS/TS Tests (`js-test.yml`)
 
