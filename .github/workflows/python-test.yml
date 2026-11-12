@@ -15,6 +15,10 @@ on:
         description: "Path passed to pytest"
         type: string
         default: "tests/"
+      qt-platform:
+        description: "Value for QT_QPA_PLATFORM (e.g. 'offscreen' for headless Qt tests); empty to leave unset"
+        type: string
+        default: "offscreen"
 
 jobs:
   test:
@@ -34,6 +38,7 @@ jobs:
 
       - env:
           TEST_PATH: ${{ inputs.test-path }}
+          QT_QPA_PLATFORM: ${{ inputs.qt-platform }}
         shell: bash
         run: |
           # Unquoted to allow a space-separated list of paths.
