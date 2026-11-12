@@ -38,9 +38,12 @@ jobs:
 
       - env:
           TEST_PATH: ${{ inputs.test-path }}
-          QT_QPA_PLATFORM: ${{ inputs.qt-platform }}
+          QT_PLATFORM_INPUT: ${{ inputs.qt-platform }}
         shell: bash
         run: |
+          if [ -n "$QT_PLATFORM_INPUT" ]; then
+            export QT_QPA_PLATFORM="$QT_PLATFORM_INPUT"
+          fi
           # Unquoted to allow a space-separated list of paths.
           # shellcheck disable=SC2086
           uv run pytest $TEST_PATH -v
